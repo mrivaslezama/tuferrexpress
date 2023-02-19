@@ -1,0 +1,997 @@
+https://tuferrexpressrr.herokuapp.com/
+
+
+
+
+==================================
+rails new tuferrexpress
+cd tuferrexpress
+bundle install
+code .
+rails s
+==================================
+crear una ruta a pagina en blanco
+#routes.rb - ----> root "dashboard#index"
+rails g controller dashboard index
+
+rails g scaffold Product name reference:string brand:string description:text --no-stylesheets --no-javascripts
+==================================
+#db/migrate/xxxxx_create_articles.rb
+class CreateArticles < ActiveRecord::Migration[7.0]
+  def change
+    create_table :articles do |t|
+      t.string :brand
+      t.string :model
+      t.text :description
+      t.string :condition
+      t.string :finish
+      t.string :title
+      # could be an integer if you want, here we set a precision, scale, and default starting point for the decimal
+      t.decimal :price, precision: 5, scale: 2, default: 0
+
+      t.timestamps
+    end
+  end
+end
+==================================
+#Cart
+==================================
+rails g scaffold Cart --no-stylesheets --no-javascripts
+==================================
+#Concerns
+==================================
+# models/concerns/current_cart.rb
+module CurrentCart
+  private
+    def set_cart
+      @cart = Cart.find(session[:cart_id])
+    rescue ActiveRecord::RecordNotFound
+      @cart = Cart.create
+      session[:cart_id] = @cart.id
+    end
+end
+==================================
+rails g scaffold LineItem product_id:references quantity:integer name:references reference:references brand:references description:references image_url:references cart:belongs_to
+rails db:migrate
+
+
+////////////////////
+
+  create_table "movements", force: :cascade do |t|
+    t.integer "product_id", null: false
+    t.integer "movement_type"
+    t.integer "quantity"
+    t.text "comment"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["product_id"], name: "index_movements_on_product_id"
+  end
+
+  create_table "products", force: :cascade do |t|
+    t.string "name"
+    t.string "reference"
+    t.string "brand"
+    t.text "description"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+///////////////////
+
+
+==================================
+# models/line_item.rb 
+==================================
+class LineItem < ApplicationRecord
+  belongs_to :article
+  belongs_to :cart
+end
+==================================
+rails g migration add_quantity_to_line_items quantity:integer, default: 1
+==================================
+class AddQuantityToLineItems < ActiveRecord::Migration[5.2]
+  def change
+    add_column :line_items, :quantity, :integer, default: 1
+  end
+end
+==================================
+$ rails db:migrate
+==================================
+# models/cart.rb
+class Cart < ApplicationRecord
+  has_many :line_items, dependent: :destroy
+  def add_article(article)
+    current_item = line_items.find_by(article_id: article.id)
+    if current_item
+      current_item.increment(:quantity)
+    else
+      current_item = line_items.build(article_id: article.id)
+    end
+    current_item
+  end
+
+  def total_price
+    line_items.to_a.sum { |item| item.total_price }
+  end
+end
+==================================
+# models/article.rb
+class Article < ApplicationRecord  
+  before_destroy :not_referenced_by_any_line_item
+  mount_uploader :image, ImageUploader  # carrierwave support for our image column
+  serialize :image, JSON # If you use SQLite, add this line.
+  belongs_to :user, optional: true
+
+  validates :title, :brand, :price, :model, presence: true
+  validates :description, length: { maximum: 1000, too_long: "%{count} characters is the maximum allowed" }
+  validates :title, length: { maximum: 140, too_long: "%{count} characters is the maximum allowed" }
+  validates :price, numericality: { only_integer: true }, length: { maximum: 7 }
+
+  BRAND = %w{ Fender Gibson Epiphone ESP Martin Dean Taylor Jackson PRS  Ibanez Charvel Washburn }
+  FINISH = %w{ Black White Navy Blue Red Clear Satin Yellow Seafoam }
+  CONDITION = %w{ New Excellent Mint Used Fair Poor }
+
+  has_many :line_items
+
+  private
+
+   def not_referenced_by_any_line_item
+    unless line_items.empty?
+      errors.add(:base, 'Line items present')
+      throw :abort
+    end
+   end
+
+end
+==================================
+Line Item model
+# app/models/line_item.rb
+class LineItem < ApplicationRecord
+  belongs_to :article
+  belongs_to :cart
+
+  def total_price
+    article.price.to_i * quantity.to_i
+  end
+end
+==================================
+User model
+==================================
+# app/models/user.rb
+class User < ApplicationRecord
+  # Include default devise modules. Others available are:
+  # :confirmable, :lockable, :timeoutable and :omniauthable
+  devise :database_authenticatable, :registerable,
+         :recoverable, :rememberable, :trackable, :validatable
+  has_many :article
+end
+==================================
+Controllers!
+==================================
+# app/controllers/line_items_controller.rb
+class LineItemsController < ApplicationController
+  include CurrentCart
+  before_action :set_line_item, only: [:show, :edit, :update, :destroy]
+  before_action :set_cart, only: [:create]
+
+  # GET /line_items
+  # GET /line_items.json
+  def index
+    @line_items = LineItem.all
+  end
+
+  # GET /line_items/1
+  # GET /line_items/1.json
+  def show
+  end
+
+  # GET /line_items/new
+  def new
+    @line_item = LineItem.new
+  end
+
+  # GET /line_items/1/edit
+  def edit
+  end
+
+  # POST /line_items
+  # POST /line_items.json
+def create
+    @article = Article.find(params[:article_id])
+    @line_item = @cart.add_article(@article)
+
+    respond_to do |format|
+      if @line_item.save
+        format.html { redirect_to @line_item.cart, notice: 'Line item was successfully created.' }
+        format.json { render :show, status: :created, location: @line_item }
+      else
+        format.html { render :new }
+        format.json { render json: @line_item.errors, status: :unprocessable_entity }
+      end
+    end
+  end
+
+  # PATCH/PUT /line_items/1
+  # PATCH/PUT /line_items/1.json
+  def update
+    respond_to do |format|
+      if @line_item.update(line_item_params)
+        format.html { redirect_to @line_item, notice: 'Line item was successfully updated.' }
+        format.json { render :show, status: :ok, location: @line_item }
+      else
+        format.html { render :edit }
+        format.json { render json: @line_item.errors, status: :unprocessable_entity }
+      end
+    end
+  end
+
+  # DELETE /line_items/1
+  # DELETE /line_items/1.json
+  def destroy
+    @line_item.destroy
+    respond_to do |format|
+      format.html { redirect_to line_items_url, notice: 'Line item was successfully destroyed.' }
+      format.json { head :no_content }
+    end
+  end
+
+  private
+    # Use callbacks to share common setup or constraints between actions.
+    def set_line_item
+      @line_item = LineItem.find(params[:id])
+    end
+
+    # Never trust parameters from the scary internet, only allow the whitelist through.
+    def line_item_params
+      params.require(:line_item).permit(:article_id)
+    end
+end
+
+The cart controller is quite similar to the line_items_controller.rb file where we pay most attention to the create and destroy actions. The final code is below:
+
+# app/controllers/carts_controller.rb
+
+class CartsController < ApplicationController
+  rescue_from ActiveRecord::RecordNotFound, with: :invalid_cart
+  before_action :set_cart, only: [:show, :edit, :update, :destroy]
+
+  # GET /carts
+  # GET /carts.json
+  def index
+    @carts = Cart.all
+  end
+
+  # GET /carts/1
+  # GET /carts/1.json
+  def show
+  end
+
+  # GET /carts/new
+  def new
+    @cart = Cart.new
+  end
+
+  # GET /carts/1/edit
+  def edit
+  end
+
+  # POST /carts
+  # POST /carts.json
+  def create
+    @cart = Cart.new(cart_params)
+
+    respond_to do |format|
+      if @cart.save
+        format.html { redirect_to @cart, notice: 'Cart was successfully created.' }
+        format.json { render :show, status: :created, location: @cart }
+      else
+        format.html { render :new }
+        format.json { render json: @cart.errors, status: :unprocessable_entity }
+      end
+    end
+  end
+
+  # PATCH/PUT /carts/1
+  # PATCH/PUT /carts/1.json
+  def update
+    respond_to do |format|
+      if @cart.update(cart_params)
+        format.html { redirect_to @cart, notice: 'Cart was successfully updated.' }
+        format.json { render :show, status: :ok, location: @cart }
+      else
+        format.html { render :edit }
+        format.json { render json: @cart.errors, status: :unprocessable_entity }
+      end
+    end
+  end
+
+  # DELETE /carts/1
+  # DELETE /carts/1.json
+  def destroy
+    @cart.destroy if @cart.id == session[:cart_id]
+    session[:cart_id] = nil
+    respond_to do |format|
+      format.html { redirect_to root_path, notice: 'Cart was successfully destroyed.' }
+      format.json { head :no_content }
+    end
+  end
+
+  private
+    # Use callbacks to share common setup or constraints between actions.
+    def set_cart
+      @cart = Cart.find(params[:id])
+    end
+
+    # Never trust parameters from the scary internet, only allow the white list through.
+    def cart_params
+      params.fetch(:cart, {})
+    end
+
+    def invalid_cart
+      logger.error "Attempt to access invalid cart #{params[:id]}"
+      redirect_to root_path, notice: "That cart doesn't exist"
+    end
+end
+
+Finally, the instruments controller associates Devise any new records that get created, edited, or destroyed here. We also authenticate on every restful path minus the index and show actions.
+
+# app/controllers/articles_controller.rb
+
+class ArticlesController &lt; ApplicationController
+  before_action :set_article, only: [:show, :edit, :update, :destroy]
+  before_action :authenticate_user!, except: [:index, :show]
+
+  # GET /articles
+  # GET /articles.json
+  def index
+    @articles = Article.all.order("created_at desc")
+  end
+
+  # GET /articles/1
+  # GET /articles/1.json
+  def show
+  end
+
+  # GET /articles/new
+  def new
+    @article = current_user.articles.build
+  end
+
+  # GET /articles/1/edit
+  def edit
+  end
+
+  # POST /articles
+  # POST /articles.json
+  def create
+    @article = current_user.articles.build(article_params)
+
+    respond_to do |format|
+      if @article.save
+        format.html { redirect_to @article, notice: 'Article was successfully created.' }
+        format.json { render :show, status: :created, location: @article }
+      else
+        format.html { render :new }
+        format.json { render json: @article.errors, status: :unprocessable_entity }
+      end
+    end
+  end
+
+  # PATCH/PUT /articles/1
+  # PATCH/PUT /articles/1.json
+  def update
+    respond_to do |format|
+      if @article.update(article_params)
+        format.html { redirect_to @article, notice: 'Article was successfully updated.' }
+        format.json { render :show, status: :ok, location: @article }
+      else
+        format.html { render :edit }
+        format.json { render json: @article.errors, status: :unprocessable_entity }
+      end
+    end
+  end
+
+  # DELETE /articles/1
+  # DELETE /articles/1.json
+  def destroy
+    @article.destroy
+    respond_to do |format|
+      format.html { redirect_to articles_url, notice: 'Article was successfully destroyed.' }
+      format.json { head :no_content }
+    end
+  end
+
+  private
+    # Use callbacks to share common setup or constraints between actions.
+    def set_article
+      @article = Article.find(params[:id])
+    end
+
+    # Never trust parameters from the scary internet, only allow the white list through.
+    def article_params
+      params.require(:article).permit(:brand, :model, :description, :condition, :finish, :title, :price, :image)
+    end
+end
+
+Combining Items in a given cart
+
+A tricky problem we run into is to somehow combine line items in a given cart. We can use a pretty hefty migration to create the new idea of doing just that.
+
+$ rails g migration combine_items_in_cart
+
+# db/migrate/combine_items_in_cart 
+
+class CombineItemsInCart < ActiveRecord::Migration[5.2]
+  def up
+    Cart.all.each do |cart|
+      sums = cart.line_items.group(:article_id).sum(:quantity)
+      sums.each do |article_id, quantity|
+        if quantity > 1
+          cart.line_items.where(article_id: article_id).delete_all
+
+          item = cart.line_items.build(article_id: article_id)
+          item.quantity = quantity
+          item.save!
+        end
+      end
+    end
+  end
+
+  def down
+    #split items with a quantity of 1 or more into multiple items
+    LineItem.where("quantity > 1").each do |line_item|
+      line_item.quantity.times do
+        LineItem.create(
+          cart_id: line_item.cart_id,
+          article_id: line_item.article_id,
+          quantity: 1
+        )
+      end
+      # remove original line item
+      line_item.destroy
+    end
+  end
+end
+
+I get by with a little help from my friends (helpers!)
+
+For this app, we defined a few helpers to determine the number of items in a users cart and display it in the nav bar from anywhere in the app.
+
+# app/helpers/application_helper.rb
+
+module ApplicationHelper
+
+  def cart_count_over_one
+    if @cart.line_items.count > 0
+      return "<span class='tag is-dark'>#{@cart.line_items.count}</span>".html_safe
+    end
+  end
+
+  def cart_has_items
+    return @cart.line_items.count > 0
+  end
+end
+
+Rather than typing out the rather long conditional I chose to abstract it into a helper to see if a given instrument's author is indeed said, author.
+
+# app/helpers/articles_helper.rb
+
+module ArticlesHelper
+
+  def article_author(article)
+    user_signed_in? && current_user.id == article.user_id
+  end
+
+end
+
+Seeding
+
+Rails is pretty awesome in terms of setting yourself up for success. You can define some placeholder content from the get-go and seed that content into your app. There are gems out in the wild that help with generating some fake data for you to use where you please. Seeding data ultimately helps save time and time spent debugging your code. The last step of this series is a guide on how to seed data for this app.
+
+If you made it this far I can't thank you enough for following along on my journey to get better with Ruby on Rails. I realize this app is incomplete but I do plan to introduce ideas revolving around accepting payments using rails as the framework behind the process. Future builds and or short videos will hopefully keep the learning coming. Until then be sure to check out my other videos and subscribe to my YouTube channel. You can also follow me on Twitter for instant updates of new content.
+Shameless plug time
+
+I have a new course called Hello Rails. Hello Rails is modern course designed to help you start using and understanding Ruby on Rails fast. If you're a novice when it comes to Ruby or Ruby on Rails I invite you to check out the site. The course will be much like these builds but a super more in-depth version with more realistic goals and deliverables. Sign up to get notified today! 
+
+
+
+
+
+=====================================================
+=====================================================
+Our main model within the app will be the Instrument model. It will feature all the details and product specs related to a given instrument for sale. To kick things off I walk you through some general setup followed by scaffolding an Instrument model which looks like the following:
+
+$ rails g scaffold Instrument brand:string model:string description:text condition:string finish:string title:string price:decimal --no-stylesheets --no-javascripts
+
+This long one-liner creates our Instrument model and it's associated parameters. Note the price is a decimal datatype. This can also be an integer or even a string depending on how you want to work with the data. After running the scaffold be sure to modify the price column to match the following for best results.
+
+class CreateInstruments < ActiveRecord::Migration[5.2]
+  def change
+    create_table :instruments do |t|
+      t.string :brand
+      t.string :model
+      t.text :description
+      t.string :condition
+      t.string :finish
+      t.string :title
+      # could be an integer if you want, here we set a precision, scale, and default starting point for the decimal
+      t.decimal :price, precision: 5, scale: 2, default: 0
+
+      t.timestamps
+    end
+  end
+end
+
+Also, note the two flags we passed —no-stylesheets —no-javascripts. Rails is accommodating when running any type of generation. Here we told rails to forget adding stylesheets and javascript files. There are a ton more flags you can pass. To find out what those are just run this:
+
+$ rails g scaffold
+
+Cart
+
+All eCommerce apps need some sort of Cart. Within our cart, we also need a space for what I end up calling "line items". To create the cart we simply need to define a new model.
+
+$ rails g scaffold Cart --no-stylesheets --no-javascripts
+
+We needn't specify and columns here as well be using the cart as a general restful model.
+
+Concerns
+
+Concerns are similar to helpers of which you can include in controllers throughout the app. We need to know a given user browsing session history to properly associate their session with a given cart. Add the following to models/concerns/current_cart.rb.
+
+# models/concerns/current_cart.rb
+
+module CurrentCart
+
+  private
+
+    def set_cart
+      @cart = Cart.find(session[:cart_id])
+    rescue ActiveRecord::RecordNotFound
+      @cart = Cart.create
+      session[:cart_id] = @cart.id
+    end
+
+end
+
+Here we find the given session's cart id if it exists. If not we make use of some handy rescue patterns built intro rails which keeps the app from toppling over. If a cart_id isn't found we create one and associate it's id to the user's session. This ultimately allows us to reference any type of user without needing them to create some sort of account or sign in anywhere first. Pretty cool eh?
+Connecting Instruments to Carts
+
+To get our Instruments to talk to the Cart we need a model in between. For this, I create a new model called LineItem. This generation is pretty smart as in a few keystrokes we can engage the instrument model to reference a given line item as well as belong to a cart. This ultimately adds indexes to the table which makes them know about each other.
+
+$ rails g scaffold LineItem instrument:references cart:belongs_to
+$ rails db:migrate
+
+This generation creates quite a few files. The most notable one includes the model of course.
+
+# models/line_item.rb 
+
+class LineItem < ApplicationRecord
+  belongs_to :instrument
+  belongs_to :cart
+end
+
+We need a way to find the number of line items in a given cart. Let's add a migration that does just that.
+
+$ rails g migration add_quantity_to_line_items quantity:integer, default: 1
+
+Notice the quantity is an integer with a default value of 1. This is intentional so that a user who adds one item to a cart will see that there is indeed one item in the quantity field rather than 0. Traditional programming uses integers that start at zero. This is a common gotcha in programming that screws many developers including yours truly all too often!
+
+class AddQuantityToLineItems < ActiveRecord::Migration[5.2]
+  def change
+    add_column :line_items, :quantity, :integer, default: 1
+  end
+end
+
+Be sure to run the following:
+
+$ rails db:migrate
+
+Making the models communicate
+
+With the line item model, all square let's get the Cart model and Instrument model up to speed.
+
+# models/cart.rb
+
+class Cart < ApplicationRecord
+  has_many :line_items, dependent: :destroy
+
+  def add_instrument(instrument)
+    current_item = line_items.find_by(instrument_id: instrument.id)
+
+    if current_item
+      current_item.increment(:quantity)
+    else
+      current_item = line_items.build(instrument_id: instrument.id)
+    end
+    current_item
+  end
+
+  def total_price
+    line_items.to_a.sum { |item| item.total_price }
+  end
+
+end
+
+Below is the instrument model. You'll see quite a few settings and validations here. Feel free to tweak these to your own liking.
+
+# models/instrument.rb
+class Instrument < ApplicationRecord  
+  before_destroy :not_referenced_by_any_line_item
+  mount_uploader :image, ImageUploader  # carrierwave support for our image column
+  serialize :image, JSON # If you use SQLite, add this line.
+  belongs_to :user, optional: true
+
+  validates :title, :brand, :price, :model, presence: true
+  validates :description, length: { maximum: 1000, too_long: "%{count} characters is the maximum allowed" }
+  validates :title, length: { maximum: 140, too_long: "%{count} characters is the maximum allowed" }
+  validates :price, numericality: { only_integer: true }, length: { maximum: 7 }
+
+  BRAND = %w{ Fender Gibson Epiphone ESP Martin Dean Taylor Jackson PRS  Ibanez Charvel Washburn }
+  FINISH = %w{ Black White Navy Blue Red Clear Satin Yellow Seafoam }
+  CONDITION = %w{ New Excellent Mint Used Fair Poor }
+
+  has_many :line_items
+
+  private
+
+   def not_referenced_by_any_line_item
+    unless line_items.empty?
+      errors.add(:base, 'Line items present')
+      throw :abort
+    end
+   end
+
+end
+
+Line Item model
+
+# app/models/line_item.rb
+
+class LineItem < ApplicationRecord
+  belongs_to :instrument
+  belongs_to :cart
+
+  def total_price
+    instrument.price.to_i * quantity.to_i
+  end
+end
+
+User model
+
+# app/models/user.rb
+
+class User < ApplicationRecord
+  # Include default devise modules. Others available are:
+  # :confirmable, :lockable, :timeoutable and :omniauthable
+  devise :database_authenticatable, :registerable,
+         :recoverable, :rememberable, :trackable, :validatable
+  has_many :instruments
+end
+
+Controllers!
+
+The line items controller does a bit of magic to associate Instruments with a cart. We hook into an instrument_id parameter which was added when we did the line item scaffold. We pay most attention to the create and destroy actions here.
+
+# app/controllers/line_items_controller.rb
+
+class LineItemsController < ApplicationController
+  include CurrentCart
+  before_action :set_line_item, only: [:show, :edit, :update, :destroy]
+  before_action :set_cart, only: [:create]
+
+  # GET /line_items
+  # GET /line_items.json
+  def index
+    @line_items = LineItem.all
+  end
+
+  # GET /line_items/1
+  # GET /line_items/1.json
+  def show
+  end
+
+  # GET /line_items/new
+  def new
+    @line_item = LineItem.new
+  end
+
+  # GET /line_items/1/edit
+  def edit
+  end
+
+  # POST /line_items
+  # POST /line_items.json
+def create
+    @instrument = Instrument.find(params[:instrument_id])
+    @line_item = @cart.add_instrument(@instrument)
+
+    respond_to do |format|
+      if @line_item.save
+        format.html { redirect_to @line_item.cart, notice: 'Line item was successfully created.' }
+        format.json { render :show, status: :created, location: @line_item }
+      else
+        format.html { render :new }
+        format.json { render json: @line_item.errors, status: :unprocessable_entity }
+      end
+    end
+  end
+
+  # PATCH/PUT /line_items/1
+  # PATCH/PUT /line_items/1.json
+  def update
+    respond_to do |format|
+      if @line_item.update(line_item_params)
+        format.html { redirect_to @line_item, notice: 'Line item was successfully updated.' }
+        format.json { render :show, status: :ok, location: @line_item }
+      else
+        format.html { render :edit }
+        format.json { render json: @line_item.errors, status: :unprocessable_entity }
+      end
+    end
+  end
+
+  # DELETE /line_items/1
+  # DELETE /line_items/1.json
+  def destroy
+    @line_item.destroy
+    respond_to do |format|
+      format.html { redirect_to line_items_url, notice: 'Line item was successfully destroyed.' }
+      format.json { head :no_content }
+    end
+  end
+
+  private
+    # Use callbacks to share common setup or constraints between actions.
+    def set_line_item
+      @line_item = LineItem.find(params[:id])
+    end
+
+    # Never trust parameters from the scary internet, only allow the whitelist through.
+    def line_item_params
+      params.require(:line_item).permit(:instrument_id)
+    end
+end
+
+The cart controller is quite similar to the line_items_controller.rb file where we pay most attention to the create and destroy actions. The final code is below:
+
+# app/controllers/carts_controller.rb
+
+class CartsController < ApplicationController
+  rescue_from ActiveRecord::RecordNotFound, with: :invalid_cart
+  before_action :set_cart, only: [:show, :edit, :update, :destroy]
+
+  # GET /carts
+  # GET /carts.json
+  def index
+    @carts = Cart.all
+  end
+
+  # GET /carts/1
+  # GET /carts/1.json
+  def show
+  end
+
+  # GET /carts/new
+  def new
+    @cart = Cart.new
+  end
+
+  # GET /carts/1/edit
+  def edit
+  end
+
+  # POST /carts
+  # POST /carts.json
+  def create
+    @cart = Cart.new(cart_params)
+
+    respond_to do |format|
+      if @cart.save
+        format.html { redirect_to @cart, notice: 'Cart was successfully created.' }
+        format.json { render :show, status: :created, location: @cart }
+      else
+        format.html { render :new }
+        format.json { render json: @cart.errors, status: :unprocessable_entity }
+      end
+    end
+  end
+
+  # PATCH/PUT /carts/1
+  # PATCH/PUT /carts/1.json
+  def update
+    respond_to do |format|
+      if @cart.update(cart_params)
+        format.html { redirect_to @cart, notice: 'Cart was successfully updated.' }
+        format.json { render :show, status: :ok, location: @cart }
+      else
+        format.html { render :edit }
+        format.json { render json: @cart.errors, status: :unprocessable_entity }
+      end
+    end
+  end
+
+  # DELETE /carts/1
+  # DELETE /carts/1.json
+  def destroy
+    @cart.destroy if @cart.id == session[:cart_id]
+    session[:cart_id] = nil
+    respond_to do |format|
+      format.html { redirect_to root_path, notice: 'Cart was successfully destroyed.' }
+      format.json { head :no_content }
+    end
+  end
+
+  private
+    # Use callbacks to share common setup or constraints between actions.
+    def set_cart
+      @cart = Cart.find(params[:id])
+    end
+
+    # Never trust parameters from the scary internet, only allow the white list through.
+    def cart_params
+      params.fetch(:cart, {})
+    end
+
+    def invalid_cart
+      logger.error "Attempt to access invalid cart #{params[:id]}"
+      redirect_to root_path, notice: "That cart doesn't exist"
+    end
+end
+
+Finally, the instruments controller associates Devise any new records that get created, edited, or destroyed here. We also authenticate on every restful path minus the index and show actions.
+
+# app/controllers/instruments_controller.rb
+
+class InstrumentsController &lt; ApplicationController
+  before_action :set_instrument, only: [:show, :edit, :update, :destroy]
+  before_action :authenticate_user!, except: [:index, :show]
+
+  # GET /instruments
+  # GET /instruments.json
+  def index
+    @instruments = Instrument.all.order("created_at desc")
+  end
+
+  # GET /instruments/1
+  # GET /instruments/1.json
+  def show
+  end
+
+  # GET /instruments/new
+  def new
+    @instrument = current_user.instruments.build
+  end
+
+  # GET /instruments/1/edit
+  def edit
+  end
+
+  # POST /instruments
+  # POST /instruments.json
+  def create
+    @instrument = current_user.instruments.build(instrument_params)
+
+    respond_to do |format|
+      if @instrument.save
+        format.html { redirect_to @instrument, notice: 'Instrument was successfully created.' }
+        format.json { render :show, status: :created, location: @instrument }
+      else
+        format.html { render :new }
+        format.json { render json: @instrument.errors, status: :unprocessable_entity }
+      end
+    end
+  end
+
+  # PATCH/PUT /instruments/1
+  # PATCH/PUT /instruments/1.json
+  def update
+    respond_to do |format|
+      if @instrument.update(instrument_params)
+        format.html { redirect_to @instrument, notice: 'Instrument was successfully updated.' }
+        format.json { render :show, status: :ok, location: @instrument }
+      else
+        format.html { render :edit }
+        format.json { render json: @instrument.errors, status: :unprocessable_entity }
+      end
+    end
+  end
+
+  # DELETE /instruments/1
+  # DELETE /instruments/1.json
+  def destroy
+    @instrument.destroy
+    respond_to do |format|
+      format.html { redirect_to instruments_url, notice: 'Instrument was successfully destroyed.' }
+      format.json { head :no_content }
+    end
+  end
+
+  private
+    # Use callbacks to share common setup or constraints between actions.
+    def set_instrument
+      @instrument = Instrument.find(params[:id])
+    end
+
+    # Never trust parameters from the scary internet, only allow the white list through.
+    def instrument_params
+      params.require(:instrument).permit(:brand, :model, :description, :condition, :finish, :title, :price, :image)
+    end
+end
+
+Combining Items in a given cart
+
+A tricky problem we run into is to somehow combine line items in a given cart. We can use a pretty hefty migration to create the new idea of doing just that.
+
+$ rails g migration combine_items_in_cart
+
+# db/migrate/combine_items_in_cart 
+
+class CombineItemsInCart < ActiveRecord::Migration[5.2]
+  def up
+    Cart.all.each do |cart|
+      sums = cart.line_items.group(:instrument_id).sum(:quantity)
+      sums.each do |instrument_id, quantity|
+        if quantity > 1
+          cart.line_items.where(instrument_id: instrument_id).delete_all
+
+          item = cart.line_items.build(instrument_id: instrument_id)
+          item.quantity = quantity
+          item.save!
+        end
+      end
+    end
+  end
+
+  def down
+    #split items with a quantity of 1 or more into multiple items
+    LineItem.where("quantity > 1").each do |line_item|
+      line_item.quantity.times do
+        LineItem.create(
+          cart_id: line_item.cart_id,
+          instrument_id: line_item.instrument_id,
+          quantity: 1
+        )
+      end
+      # remove original line item
+      line_item.destroy
+    end
+  end
+end
+
+I get by with a little help from my friends (helpers!)
+
+For this app, we defined a few helpers to determine the number of items in a users cart and display it in the nav bar from anywhere in the app.
+
+# app/helpers/application_helper.rb
+
+module ApplicationHelper
+
+  def cart_count_over_one
+    if @cart.line_items.count > 0
+      return "<span class='tag is-dark'>#{@cart.line_items.count}</span>".html_safe
+    end
+  end
+
+  def cart_has_items
+    return @cart.line_items.count > 0
+  end
+end
+
+Rather than typing out the rather long conditional I chose to abstract it into a helper to see if a given instrument's author is indeed said, author.
+
+# app/helpers/instruments_helper.rb
+
+module InstrumentsHelper
+
+  def instrument_author(instrument)
+    user_signed_in? && current_user.id == instrument.user_id
+  end
+
+end
+
+Seeding
+
+Rails is pretty awesome in terms of setting yourself up for success. You can define some placeholder content from the get-go and seed that content into your app. There are gems out in the wild that help with generating some fake data for you to use where you please. Seeding data ultimately helps save time and time spent debugging your code. The last step of this series is a guide on how to seed data for this app.
+
+If you made it this far I can't thank you enough for following along on my journey to get better with Ruby on Rails. I realize this app is incomplete but I do plan to introduce ideas revolving around accepting payments using rails as the framework behind the process. Future builds and or short videos will hopefully keep the learning coming. Until then be sure to check out my other videos and subscribe to my YouTube channel. You can also follow me on Twitter for instant updates of new content.
+Shameless plug time
+
+I have a new course called Hello Rails. Hello Rails is modern course designed to help you start using and understanding Ruby on Rails fast. If you're a novice when it comes to Ruby or Ruby on Rails I invite you to check out the site. The course will be much like these builds but a super more in-depth version with more realistic goals and deliverables. Sign up to get notified today! 

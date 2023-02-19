@@ -1,0 +1,109 @@
+<div class="container px-5 my-5">
+    <div class="row gx-5">
+        <div class="col-lg-4 mb-5 mb-lg-0"><h1 class="fw-bolder mb-0">Bienvenidos!</h1></div>
+    </div>
+</div>
+
+
+<!-- Features section-->
+    <section class="py-5" id="features">
+        <div class="container px-5 my-5">
+            <div class="row gx-5">
+                <div class="col-lg-4 mb-5 mb-lg-0"><h2 class="fw-bolder mb-0">Categorias</h2></div>
+                <div class="col-lg-8">
+                    <div class="row gx-5 row-cols-1 row-cols-md-2">
+                        <div class="col mb-5 h-100">
+                            <div class="feature bg-primary bg-gradient text-white rounded-3 mb-3"><i class="bi bi-collection"></i></div>
+                            <h2 class="h5">Sellantes - Fijación y Tornillería</h2>
+                            <p class="mb-0">Accesorios para fijación, protectores de madera, sellantes, tornillos, pernos, tuercas, entre otros.</p>
+                        </div>
+                        <div class="col mb-5 h-100">
+                            <div class="feature bg-primary bg-gradient text-white rounded-3 mb-3"><i class="bi bi-building"></i></div>
+                            <h2 class="h5">Ferreteria</h2>
+                            <p class="mb-0">Todo lo relacionado al ramo ferretero, herramientas, repuestos, consumibles.</p>
+                        </div>
+                        <div class="col mb-5 mb-md-0 h-100">
+                            <div class="feature bg-primary bg-gradient text-white rounded-3 mb-3"><i class="bi bi-toggles2"></i></div>
+                            <h2 class="h5">Pinturas y Complementos</h2>
+                            <p class="mb-0">Pinturas para interior y exterior, pintura en bolsa, madera, metales, barniz, spray.</p>
+                        </div>
+                        <div class="col h-100">
+                            <div class="feature bg-primary bg-gradient text-white rounded-3 mb-3"><i class="bi bi-toggles2"></i></div>
+                            <h2 class="h5">Herramientas electricas</h2>
+                            <p class="mb-0">Taladros, taladros inhalambricos, esmeril angular, lijadora orbital, cepillo de madera, fresadora tupi.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+       
+   
+   
+    <!-- Call to action-->
+          
+    <div class="row">
+    <div class="col-md-8 offset-2">
+        <div class="container">
+            <div class="row">
+                <% @products.each do |product| %> <!--Con esto trae todos los productos a la vista-->
+                    <div class="col-md-3 mb-3"> <!--Cn esto se crea las tarjetas-->
+                        <div class="card">
+                            <img class="card-img-top" src="https://dummyimage.com/600x400/c7c7c7/737373&text=image" alt="<%=product.name%>" />
+                            <div class="card-block">
+                                <h5 class="card-title">
+                                    <%= product.name %>
+                                </h5>
+                                <div class="card-text">
+                                    <div class="badge badge-primary text-black">
+                                   
+                                    </div>
+                                    <div>$<%= product.reference %>
+                                    </div>
+                                </div>
+                                <div class="row float-right">
+                                    <div class="col-md-12">
+                                       
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                <% end %>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Call to action-->
+
+    <aside class="bg-primary bg-gradient rounded-3 p-4 p-sm-5 mt-5">
+        <div class="d-flex align-items-center justify-content-between flex-column flex-xl-row text-center text-xl-start">
+        
+        
+        <!-- Testimonial section-->
+        
+            <div class="container px-5 my-5">
+                <div class="row gx-5 justify-content-center">
+                    <div class="col-lg-10 col-xl-7">
+                        <div class="text-center">
+                            <div class="fs-4 mb-4 fst-italic">"Innovamos para apoyar tus proyectos de restauración, remodelación y construcción"</div>
+                            <div class="d-flex align-items-center justify-content-center">
+                                <img class="rounded-circle me-3" src="https://dummyimage.com/40x40/ced4da/6c757d" alt="..." />
+                                <div class="fw-bold">
+                                    
+                                    <span class="fw-bold text-primary mx-1">/</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        
+        
+                
+        </div>
+    </aside>
+    </div>
+    </section>
+</main>
