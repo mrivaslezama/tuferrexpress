@@ -75,7 +75,11 @@ end
 gem 'rubyzip', '>= 1.2.1'
 gem 'caxlsx'
 gem 'caxlsx_rails'
-gem 'axlsx'
-gem 'axlsx_rails'
+#gem 'axlsx'
+#gem 'axlsx_rails'
 
 gem 'devise'
+
+gem "dockerfile-rails", ">= 1.1", :group => :development
+
+gem "pg", "~> 1.4"
